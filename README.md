@@ -13,7 +13,7 @@ A Chrome extension that fetches and summarizes YouTube video transcripts using O
 
 1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/your-username/youtube-transcript-summarizer.git
+   git clone https://github.com/2mawi2/youtube-transcript-summarizer.git
    ```
 2. **Navigate to the Extension Directory:**
    ```bash
