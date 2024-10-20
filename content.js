@@ -66,6 +66,11 @@ class TranscriptHandler {
             video.play();
         }
     }
+
+    async getVideoId() {
+        const url = new URL(window.location.href);
+        return url.searchParams.get('v');
+    }
 }
 
 const handler = new TranscriptHandler();
@@ -170,10 +175,9 @@ async function extractDescriptionFromPage() {
 function toggleSidebar() {
     const sidebar = document.getElementById('yt-transcript-sidebar');
     if (sidebar) {
-        // Sidebar exists, remove it
-        sidebar.parentNode.removeChild(sidebar);
+        sidebar.remove();
+        adjustYouTubeLayout(0); // Reset YouTube layout
     } else {
-        // Sidebar does not exist, inject it
         injectSidebar();
     }
 }
@@ -192,15 +196,17 @@ function injectSidebar() {
     sidebar.style.position = 'fixed';
     sidebar.style.top = '0';
     sidebar.style.right = '0';
-    sidebar.style.width = '400px'; // Increased width
+    sidebar.style.width = '450px';
     sidebar.style.height = '100%';
-    sidebar.style.zIndex = '9999';
-    sidebar.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
-    sidebar.style.overflow = 'hidden'; // Hide any overflow
+    sidebar.style.zIndex = '2147483646'; // One less than the masthead
+    sidebar.style.boxShadow = '-5px 0 10px rgba(0,0,0,0.2)';
+    sidebar.style.overflow = 'auto';
     sidebar.style.display = 'flex';
     sidebar.style.flexDirection = 'column';
-    sidebar.style.transform = 'translateX(0%)';
     sidebar.style.transition = 'transform 0.3s ease';
+
+    // Adjust YouTube layout
+    adjustYouTubeLayout(450); // Use the same width as the sidebar
 
     // Append the sidebar to the body before adding content
     document.body.appendChild(sidebar);
@@ -377,29 +383,39 @@ function initializeSidebar() {
                 throw new Error('API Key not found.');
             }
     
+            const videoId = await handler.getVideoId();
             const transcript = await new Promise((resolve) => {
                 handler.getTranscript((result) => {
                     resolve(result);
                 });
             });
-    
             const title = await new Promise((resolve) => {
                 handler.getTitle((result) => {
                     resolve(result);
                 });
             });
-    
             const description = await new Promise((resolve) => {
                 handler.getDescription((result) => {
                     resolve(result);
                 });
             });
-    
+
             if (!transcript || transcript === 'Transcript not available.') {
                 appendMessage('Assistant', 'Transcript not available.');
                 return;
             }
-    
+
+            const contentHash = await generateContentHash(videoId, transcript, title, description);
+            const cachedData = await getCachedSummary(videoId);
+
+            if (cachedData && cachedData.contentHash === contentHash) {
+                appendMessage('Assistant', cachedData.summary, false);
+                conversationHistory = [
+                    { role: 'assistant', content: cachedData.summary }
+                ];
+                return;
+            }
+
             initializeConversation(transcript, title, description);
     
             const openAI = new OpenAIWrapper(openaiApiKey);
@@ -428,6 +444,7 @@ function initializeSidebar() {
                         const data = line.slice('data: '.length);
                         if (data === '[DONE]') {
                             updateConversation('assistant', assistantMessage);
+                            await cacheSummary(videoId, assistantMessage, contentHash);
                             break;
                         }
                         try {
@@ -452,6 +469,15 @@ function initializeSidebar() {
             isSummarizing = false;
             ensureChatContainerVisible();
         }
+    }
+
+    async function generateContentHash(videoId, transcript, title, description) {
+        const content = `${videoId}|${title}|${description}|${transcript}`;
+        const encoder = new TextEncoder();
+        const data = encoder.encode(content);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
     function appendMessage(sender, message, addToHistory = true) {
@@ -635,5 +661,41 @@ function initializeSidebar() {
         });
     } else {
         console.error('Toggle button or sidebar not found');
+    }
+
+    async function getCachedSummary(videoId) {
+        return new Promise((resolve) => {
+            chrome.storage.local.get([videoId], (result) => {
+                resolve(result[videoId] || null);
+            });
+        });
+    }
+
+    async function cacheSummary(videoId, summary, contentHash) {
+        return new Promise((resolve) => {
+            chrome.storage.local.set({ [videoId]: { summary, contentHash } }, resolve);
+        });
+    }
+}
+
+// Add this function to adjust the YouTube layout
+function adjustYouTubeLayout(sidebarWidth) {
+    const ytdApp = document.querySelector('ytd-app');
+    if (ytdApp) {
+        ytdApp.style.marginRight = `${sidebarWidth}px`;
+    }
+
+    const masthead = document.querySelector('ytd-masthead');
+    if (masthead) {
+        masthead.style.width = `calc(100% - ${sidebarWidth}px)`;
+        masthead.style.position = 'fixed';
+        masthead.style.zIndex = '2147483647';
+    }
+
+    // Adjust the guide (left menu) to ensure it stays visible
+    const guide = document.querySelector('ytd-guide-section-renderer');
+    if (guide) {
+        guide.style.position = 'fixed';
+        guide.style.zIndex = '2147483645';
     }
 }
