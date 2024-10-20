@@ -372,17 +372,17 @@ function initializeSidebar() {
     async function startSummarization() {
         if (isSummarizing) return;
         isSummarizing = true;
-    
-        toggleLoading(true);
+
         clearMessages();
         ChatContainer().style.display = 'none';
-    
+        toggleLoading(true); // Show loading spinner initially
+
         try {
             const { openaiApiKey } = await fetchApiKey();
             if (!openaiApiKey) {
                 throw new Error('API Key not found.');
             }
-    
+
             const videoId = await handler.getVideoId();
             const transcript = await new Promise((resolve) => {
                 handler.getTranscript((result) => {
@@ -409,6 +409,7 @@ function initializeSidebar() {
             const cachedData = await getCachedSummary(videoId);
 
             if (cachedData && cachedData.contentHash === contentHash) {
+                toggleLoading(false); // Hide loading spinner
                 appendMessage('Assistant', cachedData.summary, false);
                 conversationHistory = [
                     { role: 'assistant', content: cachedData.summary }
@@ -417,27 +418,28 @@ function initializeSidebar() {
             }
 
             initializeConversation(transcript, title, description);
-    
+
             const openAI = new OpenAIWrapper(openaiApiKey);
             const reader = await openAI.generateStreamResponse(conversationHistory);
-    
+
             // Initialize assistant message
             let assistantMessage = '';
+            toggleLoading(false); // Hide loading spinner before appending the first message
             appendMessage('Assistant', '', false);
             const lastMessageElement = MessagesContainer().lastElementChild;
             const textSpan = lastMessageElement.querySelector('span.message-content');
-    
+
             const decoder = new TextDecoder('utf-8');
             let buffer = '';
-    
+
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-    
+
                 buffer += decoder.decode(value, { stream: true });
                 let lines = buffer.split('\n');
                 buffer = lines.pop();
-    
+
                 for (let line of lines) {
                     line = line.trim();
                     if (line.startsWith('data: ')) {
@@ -463,9 +465,9 @@ function initializeSidebar() {
             }
         } catch (error) {
             console.error(error);
+            toggleLoading(false); // Hide loading spinner in case of error
             appendMessage('Assistant', 'Error fetching summary.', false);
         } finally {
-            toggleLoading(false);
             isSummarizing = false;
             ensureChatContainerVisible();
         }
@@ -699,3 +701,4 @@ function adjustYouTubeLayout(sidebarWidth) {
         guide.style.zIndex = '2147483645';
     }
 }
+
