@@ -28,13 +28,15 @@ async function startSummarization() {
 
         const activeTab = await getActiveTab();
         const transcript = await fetchTranscript(activeTab.id);
+        const title = await fetchTitle(activeTab.id);
+        const description = await fetchDescription(activeTab.id);
 
         if (!transcript || transcript === 'Transcript not available.') {
             appendMessage('Assistant', 'Transcript not available.');
             return;
         }
 
-        initializeConversation(transcript);
+        initializeConversation(transcript, title, description);
 
         const openAI = new OpenAIWrapper(openaiApiKey);
         const summary = await openAI.generateResponse(conversationHistory);
@@ -74,6 +76,7 @@ SendMessageButton().addEventListener('click', async () => {
         let assistantMessage = '';
         let buffer = '';
 
+        // Append an empty assistant message
         appendMessage('Assistant', '', false);
         const lastMessageElement = MessagesContainer().lastElementChild;
         const textSpan = lastMessageElement.querySelector('span:last-child');
@@ -99,7 +102,10 @@ SendMessageButton().addEventListener('click', async () => {
                             const content = parsed.choices?.[0]?.delta?.content;
                             if (content) {
                                 assistantMessage += content;
-                                textSpan.innerHTML = DOMPurify.sanitize(marked.parse(assistantMessage));
+
+                                // Update the message content with timestamp links
+                                updateAssistantMessageContent(textSpan, assistantMessage);
+
                                 MessagesContainer().scrollTop = MessagesContainer().scrollHeight;
                             }
                         } catch (error) {
@@ -129,7 +135,15 @@ function appendMessage(sender, message, addToHistory = true) {
     textSpan.className = 'message-content';
 
     if (message) {
-        const sanitizedContent = DOMPurify.sanitize(marked.parse(message));
+        // Sanitize and parse message content
+        let sanitizedContent = DOMPurify.sanitize(marked.parse(message));
+
+        // Find timestamps and replace them with clickable links
+        const timestampRegex = /\b(\d{1,2}:\d{2}(?::\d{2})?)\b/g;
+        sanitizedContent = sanitizedContent.replace(timestampRegex, (match) => {
+            return `<a href="#" class="timestamp-link" data-timestamp="${match}">${match}</a>`;
+        });
+
         textSpan.innerHTML = sanitizedContent;
     }
 
@@ -142,6 +156,42 @@ function appendMessage(sender, message, addToHistory = true) {
         const role = sender.toLowerCase() === 'assistant' ? 'assistant' : 'user';
         conversationHistory.push({ role, content: message });
     }
+
+    // Add event listeners to timestamp links
+    textSpan.querySelectorAll('.timestamp-link').forEach(link => {
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            const timestamp = event.target.getAttribute('data-timestamp');
+            chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+                chrome.tabs.sendMessage(tabs[0].id, { action: 'seekToTimestamp', timestamp });
+            });
+        });
+    });
+}
+
+// New function to update assistant message content during streaming
+function updateAssistantMessageContent(textSpan, message) {
+    // Sanitize and parse message content
+    let sanitizedContent = DOMPurify.sanitize(marked.parse(message));
+
+    // Find timestamps and replace them with clickable links
+    const timestampRegex = /\b(\d{1,2}:\d{2}(?::\d{2})?)\b/g;
+    sanitizedContent = sanitizedContent.replace(timestampRegex, (match) => {
+        return `<a href="#" class="timestamp-link" data-timestamp="${match}">${match}</a>`;
+    });
+
+    textSpan.innerHTML = sanitizedContent;
+
+    // Re-attach event listeners to the new timestamp links
+    textSpan.querySelectorAll('.timestamp-link').forEach(link => {
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            const timestamp = event.target.getAttribute('data-timestamp');
+            chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+                chrome.tabs.sendMessage(tabs[0].id, { action: 'seekToTimestamp', timestamp });
+            });
+        });
+    });
 }
 
 async function fetchApiKey() {
@@ -261,15 +311,24 @@ async function fetchTranscript(tabId) {
     return chrome.tabs.sendMessage(tabId, { action: 'getTranscript' });
 }
 
-function initializeConversation(transcript) {
+async function fetchTitle(tabId) {
+    return chrome.tabs.sendMessage(tabId, { action: 'getTitle' });
+}
+
+async function fetchDescription(tabId) {
+    return chrome.tabs.sendMessage(tabId, { action: 'getDescription' });
+}
+
+function initializeConversation(transcript, title, description) {
+    const content = `Title: ${title}\nDescription: ${description}\nTranscript:\n${transcript}`;
     conversationHistory = [
         {
             role: 'system',
-            content: 'Provide a concise summary of the following YouTube video, focusing on the key points and highlights. Keep the summary brief and informative.'
+            content: 'Provide a concise summary of the following YouTube video, referencing specific timestamps (in the format mm:ss) when appropriate. The summary should focus on the key points and highlights. Keep the summary brief and informative.'
         },
         {
             role: 'user',
-            content: transcript
+            content: content
         }
     ];
 }
