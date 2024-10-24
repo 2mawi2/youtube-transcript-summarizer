@@ -1,3 +1,37 @@
+// Global variables
+let lastVideoId = getVideoId();
+let isSummarizing = false;
+let conversationHistory = [];
+
+// Element references (initialized later)
+let LoadingElement;
+let ChatContainer;
+let MessagesContainer;
+let ChatInput;
+let SendMessageButton;
+let StatusElement;
+let SaveApiKeyButton;
+let ApiKeyInput;
+let ConfigIcon;
+let ToggleButton;
+let ApiKeySection;
+
+// Function to detect video changes
+setInterval(() => {
+    const currentVideoId = getVideoId();
+    if (currentVideoId !== lastVideoId) {
+        lastVideoId = currentVideoId;
+        onVideoIdChange();
+    }
+}, 1000);
+
+function onVideoIdChange() {
+    // Reinitialize the extension
+    if (document.getElementById('yt-transcript-sidebar')) {
+        // If the sidebar is open, refresh its content
+        refreshSidebarContent();
+    }
+}
 
 function getVideoId() {
     const url = new URL(window.location.href);
@@ -38,90 +72,6 @@ function compareTracks(track1, track2) {
     return 0; // Preserve order if both have the same priority
 }
 
-async function getTranscript() {
-    const videoId = getVideoId();
-    const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
-    let player = window.ytInitialPlayerResponse;
-
-    if (!player || videoId !== player.videoDetails.videoId) {
-        try {
-            const response = await fetch('https://www.youtube.com/watch?v=' + videoId);
-            const body = await response.text();
-            const playerResponse = body.match(YT_INITIAL_PLAYER_RESPONSE_RE);
-
-            if (!playerResponse) {
-                console.warn('Unable to parse playerResponse');
-                return null;
-            }
-
-            player = JSON.parse(playerResponse[1]);
-            const tracks = player.captions.playerCaptionsTracklistRenderer.captionTracks;
-            tracks.sort(compareTracks);
-
-            const transcriptResponse = await fetch(tracks[0].baseUrl + '&fmt=json3');
-            const transcript = await transcriptResponse.json();
-
-            const parsedTranscript = transcript.events
-                .filter(x => x.segs)
-                .map(x => x.segs.map(y => y.utf8).join(' '))
-                .join(' ')
-                .replace(/[\u200B-\u200D\uFEFF]/g, '')
-                .replace(/\s+/g, ' ');
-
-            console.log('EXTRACTED_TRANSCRIPT', parsedTranscript);
-            return parsedTranscript;
-        } catch (error) {
-            console.error('Error retrieving transcript:', error);
-            return null;
-        }
-    }
-    return null;
-}
-
-async function extractTitleFromPage() {
-    const videoId = getVideoId();
-    const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
-
-    try {
-        const response = await fetch('https://www.youtube.com/watch?v=' + videoId);
-        const body = await response.text();
-        const playerResponse = body.match(YT_INITIAL_PLAYER_RESPONSE_RE);
-
-        if (!playerResponse) {
-            console.warn('Unable to parse playerResponse for title');
-            return null;
-        }
-
-        const player = JSON.parse(playerResponse[1]);
-        return player.videoDetails.title;
-    } catch (error) {
-        console.error('Error retrieving title:', error);
-        return null;
-    }
-}
-
-async function extractDescriptionFromPage() {
-    const videoId = getVideoId();
-    const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
-
-    try {
-        const response = await fetch('https://www.youtube.com/watch?v=' + videoId);
-        const body = await response.text();
-        const playerResponse = body.match(YT_INITIAL_PLAYER_RESPONSE_RE);
-
-        if (!playerResponse) {
-            console.warn('Unable to parse playerResponse for description');
-            return null;
-        }
-
-        const player = JSON.parse(playerResponse[1]);
-        return player.videoDetails.shortDescription;
-    } catch (error) {
-        console.error('Error retrieving description:', error);
-        return null;
-    }
-}
-
 // Chrome message listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'toggleSidebar') {
@@ -145,6 +95,7 @@ function injectSidebar() {
     // Check if sidebar already exists
     if (document.getElementById('yt-transcript-sidebar')) {
         // Sidebar already exists
+        refreshSidebarContent();
         return;
     }
 
@@ -207,28 +158,24 @@ function applyDarkMode() {
 }
 
 function initializeSidebar() {
-    // Define variables and functions AFTER the sidebar has been injected
-    const LoadingElement = () => document.getElementById('yt-sidebar-loading');
-    const ChatContainer = () => document.getElementById('yt-sidebar-chatContainer');
-    const MessagesContainer = () => document.getElementById('yt-sidebar-messages');
-    const ChatInput = () => document.getElementById('yt-sidebar-chatInput');
-    const SendMessageButton = () => document.getElementById('yt-sidebar-sendMessage');
-    const StatusElement = () => document.getElementById('yt-sidebar-status');
-    const SaveApiKeyButton = () => document.getElementById('yt-sidebar-saveApiKey');
-    const ApiKeyInput = () => document.getElementById('yt-sidebar-apiKey');
-    const ConfigIcon = () => document.getElementById('yt-sidebar-configIcon');
-    const ToggleButton = () => document.getElementById('yt-sidebar-toggleButton');
-    const ApiKeySection = () => document.getElementById('yt-sidebar-apiKeySection');
+    // Assign variables after the sidebar has been injected
+    LoadingElement = () => document.getElementById('yt-sidebar-loading');
+    ChatContainer = () => document.getElementById('yt-sidebar-chatContainer');
+    MessagesContainer = () => document.getElementById('yt-sidebar-messages');
+    ChatInput = () => document.getElementById('yt-sidebar-chatInput');
+    SendMessageButton = () => document.getElementById('yt-sidebar-sendMessage');
+    StatusElement = () => document.getElementById('yt-sidebar-status');
+    SaveApiKeyButton = () => document.getElementById('yt-sidebar-saveApiKey');
+    ApiKeyInput = () => document.getElementById('yt-sidebar-apiKey');
+    ConfigIcon = () => document.getElementById('yt-sidebar-configIcon');
+    ToggleButton = () => document.getElementById('yt-sidebar-toggleButton');
+    ApiKeySection = () => document.getElementById('yt-sidebar-apiKeySection');
 
     // Ensure that the elements are available before adding event listeners
     if (!StatusElement()) {
         console.error('StatusElement not found.');
         return;
     }
-
-    // Variables for state management
-    let isSummarizing = false;
-    let conversationHistory = [];
 
     // Event listeners and functions
     SaveApiKeyButton().addEventListener('click', () => {
@@ -325,156 +272,136 @@ function initializeSidebar() {
 
     // Now call checkApiKey after everything is initialized
     checkApiKey();
+}
 
-    // Function definitions
+function refreshSidebarContent() {
+    // Re-initialize the sidebar elements
+    initializeSidebar();
 
-    async function startSummarization() {
-        if (isSummarizing) return;
-        isSummarizing = true;
+    // Clear previous state
+    clearMessages();
+    conversationHistory = [];
+    isSummarizing = false;
 
-        clearMessages();
-        ChatContainer().style.display = 'none';
-        toggleLoading(true); // Show loading spinner initially
+    // Restart summarization for the new video
+    checkApiKey();
+}
 
-        try {
-            const { openaiApiKey } = await fetchApiKey();
-            if (!openaiApiKey) {
-                throw new Error('API Key not found.');
-            }
+// Function definitions
 
-            const videoData = await fetchVideoData();
-            if (!videoData || videoData.transcript === 'Transcript not available.') {
-                appendMessage('Assistant', 'Transcript not available.');
-                return;
-            }
+async function startSummarization() {
+    if (isSummarizing) return;
+    isSummarizing = true;
 
-            const { title, description, transcript } = videoData;
-            const videoId = getVideoId();
-            const contentHash = await generateContentHash(videoId, transcript, title, description);
-            const cachedData = await getCachedSummary(videoId);
+    clearMessages();
+    ChatContainer().style.display = 'none';
+    toggleLoading(true); // Show loading spinner initially
 
-            if (cachedData && cachedData.contentHash === contentHash) {
-                toggleLoading(false); // Hide loading spinner
-                appendMessage('Assistant', cachedData.summary, false);
-                conversationHistory = [
-                    { role: 'assistant', content: cachedData.summary }
-                ];
-                return;
-            }
+    try {
+        const { openaiApiKey } = await fetchApiKey();
+        if (!openaiApiKey) {
+            throw new Error('API Key not found.');
+        }
 
-            initializeConversation(transcript, title, description);
+        const videoData = await fetchVideoData();
+        if (!videoData || videoData.transcript === 'Transcript not available.') {
+            appendMessage('Assistant', 'Transcript not available.');
+            return;
+        }
 
-            const openAI = new OpenAIWrapper(openaiApiKey);
-            const reader = await openAI.generateStreamResponse(conversationHistory);
+        const { title, description, transcript } = videoData;
+        const videoId = getVideoId();
+        const contentHash = await generateContentHash(videoId, transcript, title, description);
+        const cachedData = await getCachedSummary(videoId);
 
-            // Initialize assistant message
-            let assistantMessage = '';
-            toggleLoading(false); // Hide loading spinner before appending the first message
-            appendMessage('Assistant', '', false);
-            const lastMessageElement = MessagesContainer().lastElementChild;
-            const textSpan = lastMessageElement.querySelector('span.message-content');
+        if (cachedData && cachedData.contentHash === contentHash) {
+            toggleLoading(false); // Hide loading spinner
+            appendMessage('Assistant', cachedData.summary, false);
+            conversationHistory = [
+                { role: 'assistant', content: cachedData.summary }
+            ];
+            return;
+        }
 
-            const decoder = new TextDecoder('utf-8');
-            let buffer = '';
+        initializeConversation(transcript, title, description);
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+        const openAI = new OpenAIWrapper(openaiApiKey);
+        const reader = await openAI.generateStreamResponse(conversationHistory);
 
-                buffer += decoder.decode(value, { stream: true });
-                let lines = buffer.split('\n');
-                buffer = lines.pop();
+        // Initialize assistant message
+        let assistantMessage = '';
+        toggleLoading(false); // Hide loading spinner before appending the first message
+        appendMessage('Assistant', '', false);
+        const lastMessageElement = MessagesContainer().lastElementChild;
+        const textSpan = lastMessageElement.querySelector('span.message-content');
 
-                for (let line of lines) {
-                    line = line.trim();
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice('data: '.length);
-                        if (data === '[DONE]') {
-                            updateConversation('assistant', assistantMessage);
-                            await cacheSummary(videoId, assistantMessage, contentHash);
-                            break;
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            let lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (let line of lines) {
+                line = line.trim();
+                if (line.startsWith('data: ')) {
+                    const data = line.slice('data: '.length);
+                    if (data === '[DONE]') {
+                        updateConversation('assistant', assistantMessage);
+                        await cacheSummary(videoId, assistantMessage, contentHash);
+                        break;
+                    }
+                    try {
+                        const parsed = JSON.parse(data);
+                        const content = parsed.choices?.[0]?.delta?.content;
+                        if (content) {
+                            assistantMessage += content;
+                            updateAssistantMessageContent(textSpan, assistantMessage);
+                            MessagesContainer().scrollTop = MessagesContainer().scrollHeight;
                         }
-                        try {
-                            const parsed = JSON.parse(data);
-                            const content = parsed.choices?.[0]?.delta?.content;
-                            if (content) {
-                                assistantMessage += content;
-                                updateAssistantMessageContent(textSpan, assistantMessage);
-                                MessagesContainer().scrollTop = MessagesContainer().scrollHeight;
-                            }
-                        } catch (error) {
-                            console.error('Error parsing stream data:', error);
-                        }
+                    } catch (error) {
+                        console.error('Error parsing stream data:', error);
                     }
                 }
             }
-        } catch (error) {
-            console.error(error);
-            toggleLoading(false); // Hide loading spinner in case of error
-            appendMessage('Assistant', 'Error fetching summary.', false);
-        } finally {
-            isSummarizing = false;
-            ensureChatContainerVisible();
         }
-    }
-
-    async function generateContentHash(videoId, transcript, title, description) {
-        const content = `${videoId}|${title}|${description}|${transcript}`;
-        const encoder = new TextEncoder();
-        const data = encoder.encode(content);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    function appendMessage(sender, message, addToHistory = true) {
+    } catch (error) {
+        console.error(error);
+        toggleLoading(false); // Hide loading spinner in case of error
+        appendMessage('Assistant', 'Error fetching summary.', false);
+    } finally {
+        isSummarizing = false;
         ensureChatContainerVisible();
-
-        const messageElement = document.createElement('div');
-        messageElement.className = sender.toLowerCase();
-
-        const iconSpan = document.createElement('span');
-        iconSpan.className = 'sender-icon';
-        iconSpan.textContent = sender === 'User' ? '👤' : '🤖';
-
-        const textSpan = document.createElement('span');
-        textSpan.className = 'message-content';
-
-        if (message) {
-            // Sanitize and parse message content
-            let sanitizedContent = DOMPurify.sanitize(marked.parse(message));
-
-            // Find timestamps and replace them with clickable links
-            const timestampRegex = /\b(\d{1,2}:\d{2}(?::\d{2})?)\b/g;
-            sanitizedContent = sanitizedContent.replace(timestampRegex, (match) => {
-                return `<a href="#" class="timestamp-link" data-timestamp="${match}">${match}</a>`;
-            });
-
-            textSpan.innerHTML = sanitizedContent;
-        }
-
-        messageElement.appendChild(iconSpan);
-        messageElement.appendChild(textSpan);
-        MessagesContainer().appendChild(messageElement);
-        MessagesContainer().scrollTop = MessagesContainer().scrollHeight;
-
-        if (addToHistory) {
-            const role = sender.toLowerCase() === 'assistant' ? 'assistant' : 'user';
-            conversationHistory.push({ role, content: message });
-        }
-
-        // Add event listeners to timestamp links
-        textSpan.querySelectorAll('.timestamp-link').forEach(link => {
-            link.addEventListener('click', (event) => {
-                event.preventDefault();
-                const timestamp = event.target.getAttribute('data-timestamp');
-                seekToTimestamp(timestamp);
-            });
-        });
     }
+}
 
-    // New function to update assistant message content during streaming
-    function updateAssistantMessageContent(textSpan, message) {
+async function generateContentHash(videoId, transcript, title, description) {
+    const content = `${videoId}|${title}|${description}|${transcript}`;
+    const encoder = new TextEncoder();
+    const data = encoder.encode(content);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function appendMessage(sender, message, addToHistory = true) {
+    ensureChatContainerVisible();
+
+    const messageElement = document.createElement('div');
+    messageElement.className = sender.toLowerCase();
+
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'sender-icon';
+    iconSpan.textContent = sender === 'User' ? '👤' : '🤖';
+
+    const textSpan = document.createElement('span');
+    textSpan.className = 'message-content';
+
+    if (message) {
         // Sanitize and parse message content
         let sanitizedContent = DOMPurify.sanitize(marked.parse(message));
 
@@ -485,144 +412,165 @@ function initializeSidebar() {
         });
 
         textSpan.innerHTML = sanitizedContent;
+    }
 
-        // Re-attach event listeners to the new timestamp links
-        textSpan.querySelectorAll('.timestamp-link').forEach(link => {
-            link.addEventListener('click', (event) => {
-                event.preventDefault();
-                const timestamp = event.target.getAttribute('data-timestamp');
-                seekToTimestamp(timestamp);
-            });
+    messageElement.appendChild(iconSpan);
+    messageElement.appendChild(textSpan);
+    MessagesContainer().appendChild(messageElement);
+    MessagesContainer().scrollTop = MessagesContainer().scrollHeight;
+
+    if (addToHistory) {
+        const role = sender.toLowerCase() === 'assistant' ? 'assistant' : 'user';
+        conversationHistory.push({ role, content: message });
+    }
+
+    // Add event listeners to timestamp links
+    textSpan.querySelectorAll('.timestamp-link').forEach(link => {
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            const timestamp = event.target.getAttribute('data-timestamp');
+            seekToTimestamp(timestamp);
         });
-    }
+    });
+}
 
-    async function fetchApiKey() {
-        return new Promise((resolve) => {
-            chrome.storage.sync.get(['openaiApiKey'], (result) => {
-                resolve(result);
-            });
+// New function to update assistant message content during streaming
+function updateAssistantMessageContent(textSpan, message) {
+    // Sanitize and parse message content
+    let sanitizedContent = DOMPurify.sanitize(marked.parse(message));
+
+    // Find timestamps and replace them with clickable links
+    const timestampRegex = /\b(\d{1,2}:\d{2}(?::\d{2})?)\b/g;
+    sanitizedContent = sanitizedContent.replace(timestampRegex, (match) => {
+        return `<a href="#" class="timestamp-link" data-timestamp="${match}">${match}</a>`;
+    });
+
+    textSpan.innerHTML = sanitizedContent;
+
+    // Re-attach event listeners to the new timestamp links
+    textSpan.querySelectorAll('.timestamp-link').forEach(link => {
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            const timestamp = event.target.getAttribute('data-timestamp');
+            seekToTimestamp(timestamp);
         });
-    }
+    });
+}
 
-    async function checkApiKey() {
-        const { openaiApiKey } = await fetchApiKey();
-        if (openaiApiKey) {
-            StatusElement().textContent = 'API Key Loaded.';
-            await startSummarization();
-        } else {
-            StatusElement().textContent = 'Please enter your OpenAI API Key.';
-        }
-    }
-
-    function toggleLoading(show) {
-        LoadingElement().style.display = show ? 'flex' : 'none';
-    }
-
-    function clearMessages() {
-        MessagesContainer().innerHTML = '';
-    }
-
-    function ensureChatContainerVisible() {
-        if (ChatContainer().style.display === 'none' || ChatContainer().style.display === '') {
-            ChatContainer().style.display = 'flex';
-        }
-    }
-
-    function initializeConversation(transcript, title, description) {
-        const content = `Title: ${title}\nDescription: ${description}\nTranscript:\n${transcript}`;
-        conversationHistory = [
-            {
-                role: 'system',
-                content: 'Provide a concise summary of the following YouTube video, referencing specific timestamps (in the format mm:ss) when appropriate. The summary should focus on the key points and highlights. Keep the summary brief and informative.'
-            },
-            {
-                role: 'user',
-                content: content
-            }
-        ];
-    }
-
-    function updateConversation(role, content) {
-        conversationHistory.push({ role, content });
-    }
-
-    class OpenAIWrapper {
-        constructor(apiKey) {
-            this.apiKey = apiKey;
-        }
-
-        async generateStreamResponse(context) {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.apiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    messages: context,
-                    max_tokens: 3000,
-                    temperature: 0.1,
-                    stream: true
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`API error: ${response.statusText}`);
-            }
-
-            return response.body.getReader();
-        }
-
-        async generateResponse(messages) {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.apiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    messages: messages,
-                    max_tokens: 3000,
-                    temperature: 0.1
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`API error: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            return data.choices[0].message.content.trim();
-        }
-    }
-
-    const toggleButton = document.getElementById('yt-sidebar-toggleButton');
-    const sidebar = document.getElementById('yt-transcript-sidebar');
-
-    if (toggleButton && sidebar) {
-        toggleButton.addEventListener('click', () => {
-            sidebar.classList.toggle('hidden');
-            console.log('Toggle button clicked'); // Add this line for debugging
+async function fetchApiKey() {
+    return new Promise((resolve) => {
+        chrome.storage.sync.get(['openaiApiKey'], (result) => {
+            resolve(result);
         });
+    });
+}
+
+async function checkApiKey() {
+    const { openaiApiKey } = await fetchApiKey();
+    if (openaiApiKey) {
+        StatusElement().textContent = 'API Key Loaded.';
+        await startSummarization();
     } else {
-        console.error('Toggle button or sidebar not found');
+        StatusElement().textContent = 'Please enter your OpenAI API Key.';
+    }
+}
+
+function toggleLoading(show) {
+    LoadingElement().style.display = show ? 'flex' : 'none';
+}
+
+function clearMessages() {
+    MessagesContainer().innerHTML = '';
+}
+
+function ensureChatContainerVisible() {
+    if (ChatContainer().style.display === 'none' || ChatContainer().style.display === '') {
+        ChatContainer().style.display = 'flex';
+    }
+}
+
+function initializeConversation(transcript, title, description) {
+    const content = `Title: ${title}\nDescription: ${description}\nTranscript:\n${transcript}`;
+    conversationHistory = [
+        {
+            role: 'system',
+            content: 'Provide a concise summary of the following YouTube video, referencing specific timestamps (in the format mm:ss) when appropriate. The summary should focus on the key points and highlights. Keep the summary brief and informative.'
+        },
+        {
+            role: 'user',
+            content: content
+        }
+    ];
+}
+
+function updateConversation(role, content) {
+    conversationHistory.push({ role, content });
+}
+
+class OpenAIWrapper {
+    constructor(apiKey) {
+        this.apiKey = apiKey;
     }
 
-    async function getCachedSummary(videoId) {
-        return new Promise((resolve) => {
-            chrome.storage.local.get([videoId], (result) => {
-                resolve(result[videoId] || null);
-            });
+    async generateStreamResponse(context) {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.apiKey}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: context,
+                max_tokens: 3000,
+                temperature: 0.1,
+                stream: true
+            })
         });
+
+        if (!response.ok) {
+            throw new Error(`API error: ${response.statusText}`);
+        }
+
+        return response.body.getReader();
     }
 
-    async function cacheSummary(videoId, summary, contentHash) {
-        return new Promise((resolve) => {
-            chrome.storage.local.set({ [videoId]: { summary, contentHash } }, resolve);
+    async generateResponse(messages) {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.apiKey}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: messages,
+                max_tokens: 3000,
+                temperature: 0.1
+            })
         });
+
+        if (!response.ok) {
+            throw new Error(`API error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.choices[0].message.content.trim();
     }
+}
+
+async function getCachedSummary(videoId) {
+    return new Promise((resolve) => {
+        chrome.storage.local.get([videoId], (result) => {
+            resolve(result[videoId] || null);
+        });
+    });
+}
+
+async function cacheSummary(videoId, summary, contentHash) {
+    return new Promise((resolve) => {
+        chrome.storage.local.set({ [videoId]: { summary, contentHash } }, resolve);
+    });
 }
 
 // Add this function to adjust the YouTube layout
@@ -648,7 +596,7 @@ function adjustYouTubeLayout(sidebarWidth) {
 }
 
 async function fetchVideoData() {
-    const videoId = new URLSearchParams(window.location.search).get('v');
+    const videoId = getVideoId();
     const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
 
     try {
