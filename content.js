@@ -2,8 +2,6 @@
 let lastVideoId = getVideoId();
 let isSummarizing = false;
 let conversationHistory = [];
-let currentVideoData = null;
-let currentContentHash = null;
 
 // Element references (initialized later)
 let LoadingElement;
@@ -33,8 +31,6 @@ function onVideoIdChange() {
         // If the sidebar is open, refresh its content
         refreshSidebarContent();
     }
-    // Fetch video data in advance
-    fetchAndStoreVideoData();
 }
 
 function getVideoId() {
@@ -232,7 +228,7 @@ function initializeSidebar() {
             // Append an empty assistant message
             appendMessage('Assistant', '', false);
             const lastMessageElement = MessagesContainer().lastElementChild;
-            const textSpan = lastMessageElement.querySelector('span.message-content');
+            const textSpan = lastMessageElement.querySelector('span:last-child');
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -307,19 +303,15 @@ async function startSummarization() {
             throw new Error('API Key not found.');
         }
 
-        // Ensure that video data is ready
-        if (!currentVideoData) {
-            await fetchAndStoreVideoData();
-        }
-        const videoData = currentVideoData;
-        const contentHash = currentContentHash;
-        const videoId = getVideoId();
-
+        const videoData = await fetchVideoData();
         if (!videoData || videoData.transcript === 'Transcript not available.') {
             appendMessage('Assistant', 'Transcript not available.');
             return;
         }
 
+        const { title, description, transcript } = videoData;
+        const videoId = getVideoId();
+        const contentHash = await generateContentHash(videoId, transcript, title, description);
         const cachedData = await getCachedSummary(videoId);
 
         if (cachedData && cachedData.contentHash === contentHash) {
@@ -331,7 +323,7 @@ async function startSummarization() {
             return;
         }
 
-        initializeConversation(videoData.transcript, videoData.title, videoData.description);
+        initializeConversation(transcript, title, description);
 
         const openAI = new OpenAIWrapper(openaiApiKey);
         const reader = await openAI.generateStreamResponse(conversationHistory);
@@ -648,18 +640,3 @@ async function fetchTranscript(player) {
         return 'Transcript not available.';
     }
 }
-
-async function fetchAndStoreVideoData() {
-    try {
-        currentVideoData = await fetchVideoData();
-        if (currentVideoData) {
-            const videoId = getVideoId();
-            currentContentHash = await generateContentHash(videoId, currentVideoData.transcript, currentVideoData.title, currentVideoData.description);
-        }
-    } catch (error) {
-        console.error('Error fetching video data:', error);
-    }
-}
-
-// Initial fetch of video data
-fetchAndStoreVideoData();
