@@ -3,7 +3,7 @@ class TranscriptHandler {
 
     async getTranscript(sendResponse) {
         try {
-            const transcript = await extractTranscriptFromPage();
+            const transcript = await getTranscript();
             if (transcript) {
                 console.log('Transcript extracted successfully.');
                 sendResponse(transcript);
@@ -76,18 +76,7 @@ class TranscriptHandler {
 const handler = new TranscriptHandler();
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'getTranscript') {
-        handler.getTranscript(sendResponse);
-        return true;
-    } else if (request.action === 'getTitle') {
-        handler.getTitle(sendResponse);
-        return true;
-    } else if (request.action === 'getDescription') {
-        handler.getDescription(sendResponse);
-        return true;
-    } else if (request.action === 'seekToTimestamp') {
-        handler.seekToTimestamp(request.timestamp);
-    } else if (request.action === 'toggleSidebar') {
+    if (request.action === 'toggleSidebar') {
         toggleSidebar();
     }
 });
@@ -114,60 +103,112 @@ function extractPlayerResponseFromScripts() {
     return null;
 }
 
-async function extractTranscriptFromPage() {
-    const playerResponse = extractPlayerResponseFromScripts();
-    if (playerResponse && playerResponse.captions && playerResponse.captions.playerCaptionsTracklistRenderer) {
-        const captionTracks = playerResponse.captions.playerCaptionsTracklistRenderer.captionTracks;
-        if (captionTracks && captionTracks.length > 0) {
-            const captionTrack = captionTracks.find(track => track.languageCode === 'en') || captionTracks[0];
-            const captionUrl = captionTrack.baseUrl;
-            const transcript = await fetchTranscript(captionUrl);
-            return transcript;
+function compareTracks(track1, track2) {
+    const langCode1 = track1.languageCode;
+    const langCode2 = track2.languageCode;
+
+    if (langCode1 === 'en' && langCode2 !== 'en') {
+        return -1; // English comes first
+    } else if (langCode1 !== 'en' && langCode2 === 'en') {
+        return 1; // English comes first
+    } else if (track1.kind !== 'asr' && track2.kind === 'asr') {
+        return -1; // Non-ASR comes first
+    } else if (track1.kind === 'asr' && track2.kind !== 'asr') {
+        return 1; // Non-ASR comes first
+    }
+
+    return 0; // Preserve order if both have the same priority
+}
+
+async function getTranscript() {
+    const videoId = new URLSearchParams(window.location.search).get('v');
+    const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
+    let player = window.ytInitialPlayerResponse;
+
+    if (!player || videoId !== player.videoDetails.videoId) {
+        try {
+            const response = await fetch('https://www.youtube.com/watch?v=' + videoId);
+            const body = await response.text();
+            const playerResponse = body.match(YT_INITIAL_PLAYER_RESPONSE_RE);
+
+            if (!playerResponse) {
+                console.warn('Unable to parse playerResponse');
+                return null;
+            }
+
+            player = JSON.parse(playerResponse[1]);
+            const metadata = {
+                title: player.videoDetails.title,
+                duration: player.videoDetails.lengthSeconds,
+                author: player.videoDetails.author,
+                views: player.videoDetails.viewCount,
+            };
+
+            const tracks = player.captions.playerCaptionsTracklistRenderer.captionTracks;
+            tracks.sort(this.compareTracks.bind(this));
+
+            const transcriptResponse = await fetch(tracks[0].baseUrl + '&fmt=json3');
+            const transcript = await transcriptResponse.json();
+
+            const parsedTranscript = transcript.events
+                .filter(x => x.segs)
+                .map(x => x.segs.map(y => y.utf8).join(' '))
+                .join(' ')
+                .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                .replace(/\s+/g, ' ');
+
+            console.log('EXTRACTED_TRANSCRIPT', parsedTranscript);
+            return parsedTranscript;
+        } catch (error) {
+            console.error('Error retrieving transcript:', error);
+            return null;
         }
     }
     return null;
 }
 
-async function fetchTranscript(captionUrl) {
-    const response = await fetch(captionUrl);
-    const text = await response.text();
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(text, 'text/xml');
-    const texts = xml.getElementsByTagName('text');
-    const transcript = Array.from(texts).map(node => {
-        const time = parseFloat(node.getAttribute('start'));
-        const text = node.textContent.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-        const timestamp = formatTimestamp(time);
-        return `${timestamp} ${text}`;
-    }).join('\n');
-    return transcript;
-}
-
-function formatTimestamp(time) {
-    const hrs = Math.floor(time / 3600);
-    const mins = Math.floor((time % 3600) / 60);
-    const secs = Math.floor(time % 60);
-    if (hrs > 0) {
-        return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    } else {
-        return `${mins}:${String(secs).padStart(2, '0')}`;
-    }
-}
-
 async function extractTitleFromPage() {
-    const playerResponse = extractPlayerResponseFromScripts();
-    if (playerResponse && playerResponse.videoDetails && playerResponse.videoDetails.title) {
-        return playerResponse.videoDetails.title;
+    const videoId = new URLSearchParams(window.location.search).get('v');
+    const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
+
+    try {
+        const response = await fetch('https://www.youtube.com/watch?v=' + videoId);
+        const body = await response.text();
+        const playerResponse = body.match(YT_INITIAL_PLAYER_RESPONSE_RE);
+
+        if (!playerResponse) {
+            console.warn('Unable to parse playerResponse for title');
+            return null;
+        }
+
+        const player = JSON.parse(playerResponse[1]);
+        return player.videoDetails.title;
+    } catch (error) {
+        console.error('Error retrieving title:', error);
+        return null;
     }
-    return null;
 }
 
 async function extractDescriptionFromPage() {
-    const playerResponse = extractPlayerResponseFromScripts();
-    if (playerResponse && playerResponse.videoDetails && playerResponse.videoDetails.shortDescription) {
-        return playerResponse.videoDetails.shortDescription;
+    const videoId = new URLSearchParams(window.location.search).get('v');
+    const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
+
+    try {
+        const response = await fetch('https://www.youtube.com/watch?v=' + videoId);
+        const body = await response.text();
+        const playerResponse = body.match(YT_INITIAL_PLAYER_RESPONSE_RE);
+
+        if (!playerResponse) {
+            console.warn('Unable to parse playerResponse for description');
+            return null;
+        }
+
+        const player = JSON.parse(playerResponse[1]);
+        return player.videoDetails.shortDescription;
+    } catch (error) {
+        console.error('Error retrieving description:', error);
+        return null;
     }
-    return null;
 }
 
 // Sidebar functions
