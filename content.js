@@ -424,28 +424,14 @@ function initializeSidebar() {
                 throw new Error('API Key not found.');
             }
 
-            const videoId = await handler.getVideoId();
-            const transcript = await new Promise((resolve) => {
-                handler.getTranscript((result) => {
-                    resolve(result);
-                });
-            });
-            const title = await new Promise((resolve) => {
-                handler.getTitle((result) => {
-                    resolve(result);
-                });
-            });
-            const description = await new Promise((resolve) => {
-                handler.getDescription((result) => {
-                    resolve(result);
-                });
-            });
-
-            if (!transcript || transcript === 'Transcript not available.') {
+            const videoData = await fetchVideoData();
+            if (!videoData || videoData.transcript === 'Transcript not available.') {
                 appendMessage('Assistant', 'Transcript not available.');
                 return;
             }
 
+            const { title, description, transcript } = videoData;
+            const videoId = await handler.getVideoId();
             const contentHash = await generateContentHash(videoId, transcript, title, description);
             const cachedData = await getCachedSummary(videoId);
 
@@ -743,3 +729,48 @@ function adjustYouTubeLayout(sidebarWidth) {
     }
 }
 
+async function fetchVideoData() {
+    const videoId = new URLSearchParams(window.location.search).get('v');
+    const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
+
+    try {
+        const response = await fetch('https://www.youtube.com/watch?v=' + videoId);
+        const body = await response.text();
+        const playerResponse = body.match(YT_INITIAL_PLAYER_RESPONSE_RE);
+
+        if (!playerResponse) {
+            console.warn('Unable to parse playerResponse');
+            return null;
+        }
+
+        const player = JSON.parse(playerResponse[1]);
+        return {
+            title: player.videoDetails.title,
+            description: player.videoDetails.shortDescription,
+            transcript: await fetchTranscript(player)
+        };
+    } catch (error) {
+        console.error('Error retrieving video data:', error);
+        return null;
+    }
+}
+
+async function fetchTranscript(player) {
+    try {
+        const tracks = player.captions.playerCaptionsTracklistRenderer.captionTracks;
+        tracks.sort(compareTracks);
+
+        const transcriptResponse = await fetch(tracks[0].baseUrl + '&fmt=json3');
+        const transcript = await transcriptResponse.json();
+
+        return transcript.events
+            .filter(x => x.segs)
+            .map(x => x.segs.map(y => y.utf8).join(' '))
+            .join(' ')
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .replace(/\s+/g, ' ');
+    } catch (error) {
+        console.error('Error retrieving transcript:', error);
+        return 'Transcript not available.';
+    }
+}
