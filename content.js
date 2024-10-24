@@ -1,106 +1,24 @@
-class TranscriptHandler {
-    constructor() { }
 
-    async getTranscript(sendResponse) {
-        try {
-            const transcript = await getTranscript();
-            if (transcript) {
-                console.log('Transcript extracted successfully.');
-                sendResponse(transcript);
-            } else {
-                console.log('Transcript not available.');
-                sendResponse('Transcript not available.');
-            }
-        } catch (error) {
-            console.error('Error extracting transcript:', error);
-            sendResponse('Transcript not available.');
-        }
-        return true;
-    }
-
-    async getTitle(sendResponse) {
-        try {
-            const title = await extractTitleFromPage();
-            if (title) {
-                console.log('Title extracted successfully.');
-                sendResponse(title);
-            } else {
-                console.log('Title not available.');
-                sendResponse('Title not available.');
-            }
-        } catch (error) {
-            console.error('Error extracting title:', error);
-            sendResponse('Title not available.');
-        }
-    }
-
-    async getDescription(sendResponse) {
-        try {
-            const description = await extractDescriptionFromPage();
-            if (description) {
-                console.log('Description extracted successfully.');
-                sendResponse(description);
-            } else {
-                console.log('Description not available.');
-                sendResponse('Description not available.');
-            }
-        } catch (error) {
-            console.error('Error extracting description:', error);
-            sendResponse('Description not available.');
-        }
-    }
-
-    seekToTimestamp(timestamp) {
-        const timeParts = timestamp.split(':').map(Number);
-        let seconds = 0;
-        if (timeParts.length === 3) {
-            seconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2];
-        } else if (timeParts.length === 2) {
-            seconds = timeParts[0] * 60 + timeParts[1];
-        } else {
-            seconds = timeParts[0];
-        }
-        const video = document.querySelector('video');
-        if (video) {
-            video.currentTime = seconds;
-            video.play();
-        }
-    }
-
-    async getVideoId() {
-        const url = new URL(window.location.href);
-        return url.searchParams.get('v');
-    }
+function getVideoId() {
+    const url = new URL(window.location.href);
+    return url.searchParams.get('v');
 }
 
-const handler = new TranscriptHandler();
-
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'toggleSidebar') {
-        toggleSidebar();
+function seekToTimestamp(timestamp) {
+    const timeParts = timestamp.split(':').map(Number);
+    let seconds = 0;
+    if (timeParts.length === 3) {
+        seconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2];
+    } else if (timeParts.length === 2) {
+        seconds = timeParts[0] * 60 + timeParts[1];
+    } else {
+        seconds = timeParts[0];
     }
-});
-
-// Functions to extract data from YouTube's page
-
-function extractPlayerResponseFromScripts() {
-    const scripts = document.getElementsByTagName('script');
-    for (let script of scripts) {
-        if (script.textContent.includes('ytInitialPlayerResponse')) {
-            const text = script.textContent;
-            const jsonStr = text.match(/ytInitialPlayerResponse\s*=\s*(\{.*?\});/s);
-            if (jsonStr && jsonStr[1]) {
-                try {
-                    const playerResponse = JSON.parse(jsonStr[1]);
-                    return playerResponse;
-                } catch (error) {
-                    console.error('Error parsing ytInitialPlayerResponse:', error);
-                }
-            }
-            break;
-        }
+    const video = document.querySelector('video');
+    if (video) {
+        video.currentTime = seconds;
+        video.play();
     }
-    return null;
 }
 
 function compareTracks(track1, track2) {
@@ -121,7 +39,7 @@ function compareTracks(track1, track2) {
 }
 
 async function getTranscript() {
-    const videoId = new URLSearchParams(window.location.search).get('v');
+    const videoId = getVideoId();
     const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
     let player = window.ytInitialPlayerResponse;
 
@@ -137,15 +55,8 @@ async function getTranscript() {
             }
 
             player = JSON.parse(playerResponse[1]);
-            const metadata = {
-                title: player.videoDetails.title,
-                duration: player.videoDetails.lengthSeconds,
-                author: player.videoDetails.author,
-                views: player.videoDetails.viewCount,
-            };
-
             const tracks = player.captions.playerCaptionsTracklistRenderer.captionTracks;
-            tracks.sort(this.compareTracks.bind(this));
+            tracks.sort(compareTracks);
 
             const transcriptResponse = await fetch(tracks[0].baseUrl + '&fmt=json3');
             const transcript = await transcriptResponse.json();
@@ -168,7 +79,7 @@ async function getTranscript() {
 }
 
 async function extractTitleFromPage() {
-    const videoId = new URLSearchParams(window.location.search).get('v');
+    const videoId = getVideoId();
     const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
 
     try {
@@ -190,7 +101,7 @@ async function extractTitleFromPage() {
 }
 
 async function extractDescriptionFromPage() {
-    const videoId = new URLSearchParams(window.location.search).get('v');
+    const videoId = getVideoId();
     const YT_INITIAL_PLAYER_RESPONSE_RE = /ytInitialPlayerResponse\s*=\s*({.+?})\s*;\s*(?:var\s+(?:meta|head)|<\/script|\n)/;
 
     try {
@@ -210,6 +121,13 @@ async function extractDescriptionFromPage() {
         return null;
     }
 }
+
+// Chrome message listener
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'toggleSidebar') {
+        toggleSidebar();
+    }
+});
 
 // Sidebar functions
 
@@ -431,7 +349,7 @@ function initializeSidebar() {
             }
 
             const { title, description, transcript } = videoData;
-            const videoId = await handler.getVideoId();
+            const videoId = getVideoId();
             const contentHash = await generateContentHash(videoId, transcript, title, description);
             const cachedData = await getCachedSummary(videoId);
 
@@ -550,7 +468,7 @@ function initializeSidebar() {
             link.addEventListener('click', (event) => {
                 event.preventDefault();
                 const timestamp = event.target.getAttribute('data-timestamp');
-                handler.seekToTimestamp(timestamp);
+                seekToTimestamp(timestamp);
             });
         });
     }
@@ -573,7 +491,7 @@ function initializeSidebar() {
             link.addEventListener('click', (event) => {
                 event.preventDefault();
                 const timestamp = event.target.getAttribute('data-timestamp');
-                handler.seekToTimestamp(timestamp);
+                seekToTimestamp(timestamp);
             });
         });
     }
