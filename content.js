@@ -312,18 +312,6 @@ async function startSummarization() {
         }
 
         const { title, description, transcript } = videoData;
-        const videoId = getVideoId();
-        const contentHash = await generateContentHash(videoId, transcript, title, description);
-        const cachedData = await getCachedSummary(videoId);
-
-        if (cachedData && cachedData.contentHash === contentHash) {
-            toggleLoading(false); // Hide loading spinner
-            appendMessage('Assistant', cachedData.summary, false);
-            conversationHistory = [
-                { role: 'assistant', content: cachedData.summary }
-            ];
-            return;
-        }
 
         initializeConversation(transcript, title, description);
 
@@ -354,7 +342,6 @@ async function startSummarization() {
                     const data = line.slice('data: '.length);
                     if (data === '[DONE]') {
                         updateConversation('assistant', assistantMessage);
-                        await cacheSummary(videoId, assistantMessage, contentHash);
                         break;
                     }
                     try {
@@ -379,15 +366,6 @@ async function startSummarization() {
         isSummarizing = false;
         ensureChatContainerVisible();
     }
-}
-
-async function generateContentHash(videoId, transcript, title, description) {
-    const content = `${videoId}|${title}|${description}|${transcript}`;
-    const encoder = new TextEncoder();
-    const data = encoder.encode(content);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 function appendMessage(sender, message, addToHistory = true) {
@@ -521,8 +499,6 @@ Proceed to generate the summary based on the provided content.`
     ];
 }
 
-
-
 function updateConversation(role, content) {
     conversationHistory.push({ role, content });
 }
@@ -554,20 +530,6 @@ class OpenAIWrapper {
 
         return response.body.getReader();
     }
-}
-
-async function getCachedSummary(videoId) {
-    return new Promise((resolve) => {
-        chrome.storage.local.get([videoId], (result) => {
-            resolve(result[videoId] || null);
-        });
-    });
-}
-
-async function cacheSummary(videoId, summary, contentHash) {
-    return new Promise((resolve) => {
-        chrome.storage.local.set({ [videoId]: { summary, contentHash } }, resolve);
-    });
 }
 
 // Add this function to adjust the YouTube layout
@@ -640,7 +602,7 @@ async function fetchTranscript(player) {
         const transcript = await transcriptResponse.json();
 
         const lines = transcript.events
-            .filter(event => event.segs) 
+            .filter(event => event.segs)
             .map(event => {
                 const startTimeMs = event.tStartMs || 0;
                 const startTime = formatTime(startTimeMs);
@@ -654,10 +616,10 @@ async function fetchTranscript(player) {
                 if (text) {
                     return `${startTime} - ${text}`;
                 } else {
-                    return null; 
+                    return null;
                 }
             })
-            .filter(line => line !== null); 
+            .filter(line => line !== null);
 
         return lines.join('\n');
     } catch (error) {
