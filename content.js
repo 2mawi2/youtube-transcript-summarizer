@@ -470,34 +470,62 @@ function ensureChatContainerVisible() {
 }
 
 function initializeConversation(transcript, title, description) {
-    const content = `Provide a summary of the following YouTube video: Title: ${title}\nDescription: ${description}\nTranscript:\n${transcript}`;
-    console.log("the content is", content);
+    const content = `
+Generate a highly useful and user-friendly summary of the following YouTube video:
+Title: ${title}
+Description: ${description}
+Transcript:
+${transcript}`;
+
     conversationHistory = [
         {
             role: 'system',
-            content: `As an AI assistant, your task is to provide a concise summary of the following YouTube video. Please adhere to these guidelines:
+            content: `As an AI assistant, your task is to generate a highly useful and user-friendly summary of the following YouTube video. Please adhere to these guidelines:
 
-- **Structure**: Organize the summary into sections with clear and brief headings.
-    - Headings should be **no longer than 5 words**.
-    - Example Heading: 'AI Video Tools (8:59)'
-    - Avoid overly detailed or lengthy headings.
-- **Timestamps**: Reference specific timestamps in **mm:ss** format when appropriate.
-- **Content Focus**: Highlight key points and important information that deliver the most value to the user.
-    - Prioritize summarizing the most significant updates and innovations.
-    - **Do not include a conclusion or closing remarks**.
-    - Exclude any personal opinions or filler content.
-- **Style**: Keep the summary informative and to the point.
-    - Use neutral language.
-    - Write in third person.
+1. **Initial Brief Summary**:
+   - **Start with a brief summary** of **1 to 3 sentences**.
+   - This summary should **explain the main point and outcome of the video**, including any relevant **background** information.
+   - **Provide a direct and explicit answer** to any questions or catchphrases in the video title **in a separate, prominent sentence immediately after the brief summary**.
+     - *Example*: If the title is "How Long Can I Live in a Luxury Resort For Free?", include a sentence like "The host demonstrates that it's possible to stay in a luxury resort for free for up to seven days using reward points and travel hacks."
 
-Proceed to generate the summary based on the provided content.`
-        },
-        {
-            role: 'user',
-            content: content
-        }
+2. **Structured Summary with Headings**:
+   - Organize the rest of the summary into sections with **clear and brief headings**.
+   - **Headings should be no longer than 3 words**.
+   - **Avoid redundancy** between headings and descriptions.
+
+3. **Content Focus**:
+   - **Do not include a conclusion or closing remarks**.
+   - **Avoid any section titled "Conclusion"**.
+   - Highlight key points and important information that deliver the most value to the user.
+   - **Focus on delivering answers and insights without requiring the user to watch the entire video**.
+   - Use timestamps in the format **(hh:mm:ss)** to reference specific moments in the video.
+
+4. **Timestamps**:
+   - Include **accurate timestamps** next to each heading.
+   - Ensure timestamps correspond to the relevant sections in the video.
+
+5. **Style and Tone**:
+   - Write in **clear, neutral language** using the **third person**.
+   - Use **complete sentences** in descriptions.
+   - **Do not include emojis**, symbols, or unnecessary characters.
+
+6. **Formatting**:
+   - Begin with the initial brief summary and the direct answer to the title's question, followed by the structured summary with headings.
+   - **Do not include any introductory text or summary headline** before the brief summary.
+   - Maintain consistent formatting throughout the summary.
+
+Proceed to generate the summary based on the provided content, ensuring it is as informative and accessible as possible for users, and addresses the specified guidelines.`
+                },
+                {
+                    role: 'user',
+                    content: content
+                }
     ];
 }
+
+
+
+
 
 function updateConversation(role, content) {
     conversationHistory.push({ role, content });
