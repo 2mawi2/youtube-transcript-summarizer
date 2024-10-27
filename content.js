@@ -219,7 +219,9 @@ function initializeSidebar() {
             }
 
             const openAI = new OpenAIWrapper(openaiApiKey);
-            const fullContext = [...conversationHistory, { role: 'user', content: message }];
+            const fullContext = [...conversationHistory];
+
+            console.log("the full context is", fullContext);
 
             const reader = await openAI.generateStreamResponse(fullContext);
             let assistantMessage = '';
@@ -490,11 +492,27 @@ function ensureChatContainerVisible() {
 }
 
 function initializeConversation(transcript, title, description) {
-    const content = `Title: ${title}\nDescription: ${description}\nTranscript:\n${transcript}`;
+    const content = `Provide a summary of the following YouTube video: Title: ${title}\nDescription: ${description}\nTranscript:\n${transcript}`;
+    console.log("the content is", content);
     conversationHistory = [
         {
             role: 'system',
-            content: 'Provide a concise summary of the following YouTube video, referencing specific timestamps (in the format mm:ss) when appropriate. The summary should focus on the key points and highlights. Keep the summary brief and informative.'
+            content: `As an AI assistant, your task is to provide a concise summary of the following YouTube video. Please adhere to these guidelines:
+
+- **Structure**: Organize the summary into sections with clear and brief headings.
+    - Headings should be **no longer than 5 words**.
+    - Example Heading: 'AI Video Tools (8:59)'
+    - Avoid overly detailed or lengthy headings.
+- **Timestamps**: Reference specific timestamps in **mm:ss** format when appropriate.
+- **Content Focus**: Highlight key points and important information that deliver the most value to the user.
+    - Prioritize summarizing the most significant updates and innovations.
+    - **Do not include a conclusion or closing remarks**.
+    - Exclude any personal opinions or filler content.
+- **Style**: Keep the summary informative and to the point.
+    - Use neutral language.
+    - Write in third person.
+
+Proceed to generate the summary based on the provided content.`
         },
         {
             role: 'user',
@@ -502,6 +520,8 @@ function initializeConversation(transcript, title, description) {
         }
     ];
 }
+
+
 
 function updateConversation(role, content) {
     conversationHistory.push({ role, content });
@@ -533,29 +553,6 @@ class OpenAIWrapper {
         }
 
         return response.body.getReader();
-    }
-
-    async generateResponse(messages) {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.apiKey}`
-            },
-            body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: messages,
-                max_tokens: 3000,
-                temperature: 0.1
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`API error: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        return data.choices[0].message.content.trim();
     }
 }
 
@@ -621,6 +618,19 @@ async function fetchVideoData() {
     }
 }
 
+function formatTime(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return [
+        hours.toString().padStart(2, '0'),
+        minutes.toString().padStart(2, '0'),
+        seconds.toString().padStart(2, '0')
+    ].join(':');
+}
+
 async function fetchTranscript(player) {
     try {
         const tracks = player.captions.playerCaptionsTracklistRenderer.captionTracks;
@@ -629,12 +639,27 @@ async function fetchTranscript(player) {
         const transcriptResponse = await fetch(tracks[0].baseUrl + '&fmt=json3');
         const transcript = await transcriptResponse.json();
 
-        return transcript.events
-            .filter(x => x.segs)
-            .map(x => x.segs.map(y => y.utf8).join(' '))
-            .join(' ')
-            .replace(/[\u200B-\u200D\uFEFF]/g, '')
-            .replace(/\s+/g, ' ');
+        const lines = transcript.events
+            .filter(event => event.segs) 
+            .map(event => {
+                const startTimeMs = event.tStartMs || 0;
+                const startTime = formatTime(startTimeMs);
+                const text = event.segs
+                    .map(seg => seg.utf8)
+                    .join(' ')
+                    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                if (text) {
+                    return `${startTime} - ${text}`;
+                } else {
+                    return null; 
+                }
+            })
+            .filter(line => line !== null); 
+
+        return lines.join('\n');
     } catch (error) {
         console.error('Error retrieving transcript:', error);
         return 'Transcript not available.';
