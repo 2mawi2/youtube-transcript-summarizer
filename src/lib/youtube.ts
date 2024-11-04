@@ -25,20 +25,47 @@ export async function fetchVideoData() {
   }
 }
 
+function formatTime(ms) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [
+      hours.toString().padStart(2, '0'),
+      minutes.toString().padStart(2, '0'),
+      seconds.toString().padStart(2, '0')
+  ].join(':');
+}
+
 export async function fetchTranscript(player: any) {
   try {
     const tracks = player.captions.playerCaptionsTracklistRenderer.captionTracks;
-    tracks.sort(compareTracks);
 
-    const transcriptResponse = await fetch(tracks[0].baseUrl + "&fmt=json3");
+    const transcriptResponse = await fetch(tracks[0].baseUrl + '&fmt=json3');
     const transcript = await transcriptResponse.json();
 
-    return transcript.events
-      .filter((x: any) => x.segs)
-      .map((x: any) => x.segs.map((y: any) => y.utf8).join(" "))
-      .join(" ")
-      .replace(/[\u200B-\u200D\uFEFF]/g, "")
-      .replace(/\s+/g, " ");
+    const lines = transcript.events
+        .filter(event => event.segs) 
+        .map(event => {
+            const startTimeMs = event.tStartMs || 0;
+            const startTime = formatTime(startTimeMs);
+            const text = event.segs
+                .map(seg => seg.utf8)
+                .join(' ')
+                .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            if (text) {
+                return `${startTime} - ${text}`;
+            } else {
+                return null; 
+            }
+        })
+        .filter(line => line !== null); 
+
+    return lines.join('\n');
   } catch (error) {
     console.error("Error retrieving transcript:", error);
     return "Transcript not available.";
