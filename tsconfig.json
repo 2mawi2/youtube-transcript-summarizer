@@ -1,0 +1,12 @@
+{
+  "extends": "@tsconfig/svelte",
+  "compilerOptions": {
+    "lib": ["dom", "esnext"],
+    "baseUrl": ".",
+    "paths": {
+      "$/*": ["./src/*"]
+    },
+    "allowImportingTsExtensions": true
+  },
+  "exclude": ["./node_modules"]
+}

@@ -19,21 +19,25 @@ A Chrome extension that fetches and summarizes YouTube video transcripts using O
    ```bash
    cd youtube-transcript-summarizer
    ```
-3. **Load the Extension in Chrome:**
+3. **Build the extension**
+   - Make sure [Deno](https://deno.land/) is installed
+   - Run `deno run build` (or `deno run dev` to watch for changes)
+4. **Load the Extension in Chrome:**
    - Open Chrome and go to `chrome://extensions/`.
    - Enable **Developer mode** using the toggle in the top right corner.
    - Click on **Load unpacked** and select the cloned repository folder.
-
-4. **Obtain an OpenAI API Key:**
+5. **Obtain an OpenAI API Key:**
    - Sign up at [OpenAI](https://openai.com/) and generate an API key.
    - Open the extension popup and enter your API key when prompted.
 
 ## Usage
 
 1. **Navigate to a YouTube Video:**
+
    - Open any YouTube video that has a transcript available.
 
 2. **Activate the Extension:**
+
    - Click on the extension icon in the Chrome toolbar.
    - The extension will automatically fetch the transcript and generate a summary.
 

@@ -1,0 +1,28 @@
+{
+  "name": "youtube-transcript-summarizer",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "fmt": "prettier --write ."
+  },
+  "dependencies": {
+    "@eslint/js": "^9.13.0",
+    "@tsconfig/svelte": "^5.0.4",
+    "dompurify": "^3.1.7",
+    "globals": "^15.11.0",
+    "marked": "^14.1.3",
+    "svelte": "^5.1.3"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "@types/chrome": "^0.0.279",
+    "@types/dompurify": "^3.0.5",
+    "@types/eslint__js": "^8.42.3",
+    "eslint": "^9.13.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.12.0",
+    "vite": "^5.4.10"
+  }
+}

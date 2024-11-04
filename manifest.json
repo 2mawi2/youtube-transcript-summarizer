@@ -8,11 +8,7 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": [
-    "storage",
-    "activeTab",
-    "scripting"
-  ],
+  "permissions": ["storage", "activeTab", "scripting"],
   "action": {
     "default_icon": {
       "16": "icons/icon16.png",
@@ -21,26 +17,19 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "dist/background.js"
   },
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/watch*"],
-      "js": [
-        "libs/dompurify.min.js",
-        "libs/marked.min.js",
-        "content.js"
-      ],
+      "js": ["dist/content.js"],
+      "css": ["dist/style.css"],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": [
-        "libs/*.js",
-        "sidebar.html",
-        "sidebar.css"
-      ],
+      "resources": ["sidebar.html", "sidebar.css"],
       "matches": ["<all_urls>"]
     }
   ]
